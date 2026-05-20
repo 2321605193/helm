@@ -30,7 +30,7 @@
 ```
 ┌─────────────────────────────────────────────────────────┐
 │                   用户入口 (CLI / Skill)                  │
-│         `harness "实现用户登录"` 或 `/harness:execute`    │
+│         `helm "实现用户登录"` 或 `/helm:execute`    │
 └──────────────────────┬──────────────────────────────────┘
                        │
           ┌────────────▼────────────┐
@@ -107,26 +107,26 @@ Harness = {
 
 ### 第二层：CLI 工具（增强层，提供自动化能力）
 
-`harness` CLI 命令，提供自动化能力但不替代 Agent 的思考：
+`helm` CLI 命令，提供自动化能力但不替代 Agent 的思考：
 
 ```bash
-harness init                    # 初始化当前项目（智能增量）
-harness task "实现用户登录"     # 创建任务 + 预填充模板
-harness build --level M         # 构建 Harness 环境（Phase 1）
-harness gate run --profile std  # 运行门禁
-harness status                  # 查看当前状态
-harness resume                  # 从检查点恢复
-harness upgrade                 # 升级模板到最新版本
+helm init                    # 初始化当前项目（智能增量）
+helm task "实现用户登录"     # 创建任务 + 预填充模板
+helm build --level M         # 构建 Harness 环境（Phase 1）
+helm gate run --profile std  # 运行门禁
+helm status                  # 查看当前状态
+helm resume                  # 从检查点恢复
+helm upgrade                 # 升级模板到最新版本
 ```
 
 ### 第三层：Runtime-Specific Skills/Commands（原生层）
 
-各运行时的原生技能/命令，由 `harness init` 自动生成：
+各运行时的原生技能/命令，由 `helm init` 自动生成：
 
 ```
 .claude/skills/harness/SKILL.md     ← Claude Code: /harness
 .codex/skills/harness/SKILL.md      ← Codex 技能
-.gemini/commands/harness.toml       ← Gemini 命令
+.gemini/commands/helm.toml       ← Gemini 命令
 .cursor/skills/harness/SKILL.md     ← Cursor 技能
 ```
 
@@ -134,12 +134,12 @@ harness upgrade                 # 升级模板到最新版本
 
 | 场景 | 使用方式 |
 |------|---------|
-| 新项目起步 | `harness init` → 生成第一层文件 |
+| 新项目起步 | `helm init` → 生成第一层文件 |
 | 已有项目 | 复制 harness/ 目录，Agent 自动遵守规则 |
-| Claude Code | `harness init` 自动生成 .claude/skills/ |
-| Codex | `harness init` 自动生成 .codex/skills/ |
+| Claude Code | `helm init` 自动生成 .claude/skills/ |
+| Codex | `helm init` 自动生成 .codex/skills/ |
 | 纯手动 | 直接用第一层文件，告诉 Agent 遵守规范 |
-| CI/CD 集成 | `harness gate run --profile standard` |
+| CI/CD 集成 | `helm gate run --profile standard` |
 
 **核心原则**：Helm 的核心逻辑（模板、规则、门禁定义）必须在第一层的文件中，不依赖 CLI 也不依赖 Skill。CLI 和 Skill 只是"自动化入口"。
 
@@ -274,13 +274,13 @@ helm/
 ├── src/
 │   ├── index.ts                     ← CLI 入口
 │   │
-│   ├── init/                        ← harness init 核心逻辑
+│   ├── init/                        ← helm init 核心逻辑
 │   │   ├── scanner.ts               ← 扫描项目现状
 │   │   ├── differ.ts                ← 生成文件差异报告
 │   │   ├── installer.ts             ← 执行安装/更新
 │   │   └── runtime-detector.ts      ← 检测运行时（.claude/.codex/.gemini）
 │   │
-│   ├── task/                        ← harness task 命令
+│   ├── task/                        ← helm task 命令
 │   │   ├── creator.ts               ← 创建任务目录
 │   │   └── template-filler.ts       ← 预填充模板
 │   │
@@ -347,10 +347,10 @@ helm/
 │
 ├── harness/                         ← Helm 核心目录（第一层）
 │   ├── commands/                    ← Command-as-Prompt 文件
-│   │   ├── execute.md               ← /harness:execute
-│   │   ├── plan.md                  ← /harness:plan
-│   │   ├── verify.md                ← /harness:verify
-│   │   └── review.md                ← /harness:review
+│   │   ├── execute.md               ← /helm:execute
+│   │   ├── plan.md                  ← /helm:plan
+│   │   ├── verify.md                ← /helm:verify
+│   │   └── review.md                ← /helm:review
 │   ├── templates/                   ← 文档模板（Agent 填空）
 │   │   ├── prd.md
 │   │   ├── explore.md
@@ -393,21 +393,21 @@ helm/
 │
 ├── Makefile                         ← 统一命令入口（可选）
 │
-├── .claude/skills/harness/          ← 由 harness init 自动生成
+├── .claude/skills/harness/          ← 由 helm init 自动生成
 │   └── SKILL.md
-├── .codex/skills/harness/           ← 由 harness init 自动生成
+├── .codex/skills/harness/           ← 由 helm init 自动生成
 │   └── SKILL.md
 └── .harness-manifest.json           ← 安装清单（SHA-256）
 ```
 
 ---
 
-## `harness init` 智能初始化
+## `helm init` 智能初始化
 
 ### 核心算法
 
 ```
-harness init 执行流程:
+helm init 执行流程:
 
 1. 扫描项目现状
    ├── 已有 AGENTS.md？   → 读取内容，检测是否有 Harness 规则
@@ -432,7 +432,7 @@ harness init 执行流程:
 
 ### 项目状态 → 行为映射
 
-| 项目状态 | harness init 的行为 |
+| 项目状态 | helm init 的行为 |
 |---------|-------------------|
 | 空目录 | 创建全部文件: AGENTS.md, CLAUDE.md, harness/, scripts/, Makefile |
 | 已有 AGENTS.md | 检测是否包含 Harness 规则段落 → 不含则追加，已含则跳过 |
@@ -454,7 +454,7 @@ if (检测到 .codex/ 目录 || CODEX_HOME) {
 }
 
 if (检测到 .gemini/ 目录) {
-  生成 .gemini/commands/harness.toml
+  生成 .gemini/commands/helm.toml
 }
 
 if (检测到 .cursor/ 目录) {
@@ -464,7 +464,7 @@ if (检测到 .cursor/ 目录) {
 
 ### 冲突处理策略（借鉴 REDPILL）
 
-1. **安装前备份用户修改**: 对比 manifest 中的 SHA-256 哈希与当前磁盘文件，如果不同则备份到 `.harness-backups/`
+1. **安装前备份用户修改**: 对比 manifest 中的 SHA-256 哈希与当前磁盘文件，如果不同则备份到 `.helm-backups/`
 2. **幂等目录创建**: 目录不存在才创建，不覆盖已有内容
 3. **settings.json 合并**: 追加新 Hook，不覆盖非 Helm 配置；解析失败则跳过
 4. **清理孤儿文件**: 删除旧版本遗留的已废弃文件
@@ -473,7 +473,7 @@ if (检测到 .cursor/ 目录) {
 
 ## 项目类型自适应
 
-`harness init` 时自动检测项目类型，生成对应的门禁命令：
+`helm init` 时自动检测项目类型，生成对应的门禁命令：
 
 ```typescript
 function detectProjectType(cwd): string {
@@ -538,21 +538,21 @@ archiving         │ archive_done     │ done              │ summary.md
 ```
 Phase 1: 项目骨架 + 模板引擎
   ├── CLI 脚手架（TypeScript）
-  ├── harness init 命令（空目录创建完整结构）
+  ├── helm init 命令（空目录创建完整结构）
   ├── 所有模板文件（Markdown）
   ├── 所有 profile 配置（JSON）
   ├── 所有门禁脚本（Shell）
   └── AGENTS.md 基础版本
 
 Phase 2: 智能初始化
-  ├── harness init 增量模式（已有项目检测）
+  ├── helm init 增量模式（已有项目检测）
   ├── 项目类型自适应（Node/Python/...）
   ├── 运行时自动检测（.claude/.codex/...）
   ├── Manifest 系统（SHA-256 清单）
   └── 用户修改备份机制
 
 Phase 3: 任务管理
-  ├── harness task 命令
+  ├── helm task 命令
   ├── 任务目录创建 + 模板预填充
   ├── FSM 状态机（文件状态机）
   └── 状态持久化 + 检查点恢复
@@ -580,33 +580,33 @@ Phase 6: Command-as-Prompt + Skill 适配
 
 ```bash
 # 初始化（幂等，增量，安全）
-harness init                      # 当前项目初始化
-harness init --force              # 强制覆盖（提示备份）
-harness init --dry-run            # 预览变更，不执行
+helm init                      # 当前项目初始化
+helm init --force              # 强制覆盖（提示备份）
+helm init --dry-run            # 预览变更，不执行
 
 # 任务管理
-harness task "描述" --level M     # 创建任务（S/M/L/CRITICAL）
-harness task list                 # 列出所有任务
-harness task show <id>            # 查看任务详情
+helm task "描述" --level M     # 创建任务（S/M/L/CRITICAL）
+helm task list                 # 列出所有任务
+helm task show <id>            # 查看任务详情
 
 # 工作流
-harness build                     # 构建 Harness 环境（Phase 1）
-harness explore                   # 探索代码库（Phase 2a）
-harness plan                      # 生成执行计划（Phase 2b）
-harness execute                   # 执行 Waves（Phase 3）
-harness verify                    # 运行验证（Phase 4）
+helm build                     # 构建 Harness 环境（Phase 1）
+helm explore                   # 探索代码库（Phase 2a）
+helm plan                      # 生成执行计划（Phase 2b）
+helm execute                   # 执行 Waves（Phase 3）
+helm verify                    # 运行验证（Phase 4）
 
 # 门禁
-harness gate run --profile standard   # 运行门禁
-harness gate status                   # 查看门禁状态
+helm gate run --profile standard   # 运行门禁
+helm gate status                   # 查看门禁状态
 
 # 状态
-harness status                    # 查看当前任务状态
-harness resume                    # 从检查点恢复
+helm status                    # 查看当前任务状态
+helm resume                    # 从检查点恢复
 
 # 维护
-harness upgrade                   # 升级模板到最新版本
-harness manifest verify           # 验证文件完整性
+helm upgrade                   # 升级模板到最新版本
+helm manifest verify           # 验证文件完整性
 ```
 
 ---
@@ -614,7 +614,7 @@ harness manifest verify           # 验证文件完整性
 ## 关键约束
 
 1. **核心逻辑在文件中**：模板、规则、门禁定义必须在第一层文件中，不依赖 CLI
-2. **幂等**：`harness init` 执行多次不破坏已有文件
+2. **幂等**：`helm init` 执行多次不破坏已有文件
 3. **不覆盖用户修改**：对比 SHA-256，用户改过的文件保留 + 生成差异提示
 4. **Writer/Reviewer 分离**：同一 context 不自我审批
 5. **门禁失败回退**：验证失败必须回退到执行阶段

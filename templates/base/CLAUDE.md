@@ -10,9 +10,9 @@
 ## 常用操作
 
 - `/harness "需求描述"` — 启动完整 Harness 管道
-- `/harness:plan "需求描述"` — 只规划不执行
-- `/harness:verify` — 验证当前代码
-- `harness gate run --profile standard` — 运行门禁
+- `/helm:plan "需求描述"` — 只规划不执行
+- `/helm:verify` — 验证当前代码
+- `helm gate run --profile standard` — 运行门禁
 
 ## 行为约束
 
