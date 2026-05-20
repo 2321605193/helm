@@ -1,0 +1,19 @@
+{
+  "level": "S",
+  "description": "Typo、注释、微小修改 — 最小治理强度",
+  "gates": ["G4", "G5"],
+  "templates": ["verification"],
+  "approval": "auto",
+  "wave_parallel_limit": 1,
+  "context_budget": {
+    "always_load": ["AGENTS.md"],
+    "max_files_per_read": 3,
+    "max_total_tokens_estimate": 10000
+  },
+  "tools": {
+    "allowed": ["Read", "Edit", "Grep", "Glob"],
+    "restricted": ["Bash:*"],
+    "requires_approval": ["Write"]
+  },
+  "auto_commit": true
+}

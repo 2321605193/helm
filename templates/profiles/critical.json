@@ -1,0 +1,23 @@
+{
+  "level": "CRITICAL",
+  "description": "数据、权限、安全、发布 — 最高治理强度",
+  "gates": ["G0", "G1", "G2", "G3", "G4", "G5", "G6", "G7"],
+  "templates": ["prd", "explore", "plan", "verification", "summary"],
+  "approval": "manual_confirm",
+  "wave_parallel_limit": 1,
+  "context_budget": {
+    "always_load": ["AGENTS.md", "CLAUDE.md", "CONTEXT.md"],
+    "max_files_per_read": 3,
+    "max_total_tokens_estimate": 80000
+  },
+  "tools": {
+    "allowed": ["Read", "Write", "Edit", "Bash", "Grep", "Glob", "Agent"],
+    "restricted": ["Bash:*"],
+    "requires_approval": ["Write", "Edit", "Bash"]
+  },
+  "auto_commit": false,
+  "commit_convention": "type(scope): description\nConstraint: ...\nRejected: ...\nConfidence: ...\nScope-risk: ...\nNot-tested: ...",
+  "requires_rollback": true,
+  "requires_security_review": true,
+  "requires_human_approval": true
+}

@@ -1,0 +1,20 @@
+{
+  "level": "M",
+  "description": "Bug 修复、小功能 — 标准治理强度",
+  "gates": ["G1", "G2", "G3", "G4", "G5"],
+  "templates": ["prd", "explore", "plan", "verification", "summary"],
+  "approval": "auto",
+  "wave_parallel_limit": 3,
+  "context_budget": {
+    "always_load": ["AGENTS.md", "CLAUDE.md"],
+    "max_files_per_read": 5,
+    "max_total_tokens_estimate": 40000
+  },
+  "tools": {
+    "allowed": ["Read", "Write", "Edit", "Bash", "Grep", "Glob"],
+    "restricted": ["Bash:rm -rf", "Bash:git push --force"],
+    "requires_approval": ["Bash:*DROP*", "Bash:*DELETE*"]
+  },
+  "auto_commit": true,
+  "commit_convention": "type(scope): description"
+}

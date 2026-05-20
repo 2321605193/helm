@@ -1,0 +1,21 @@
+{
+  "level": "L",
+  "description": "跨模块、架构变更 — 完整治理",
+  "gates": ["G0", "G1", "G2", "G3", "G4", "G5", "G6", "G7"],
+  "templates": ["prd", "explore", "plan", "verification", "summary"],
+  "approval": "confirm_before_execute",
+  "wave_parallel_limit": 2,
+  "context_budget": {
+    "always_load": ["AGENTS.md", "CLAUDE.md", "CONTEXT.md"],
+    "max_files_per_read": 5,
+    "max_total_tokens_estimate": 60000
+  },
+  "tools": {
+    "allowed": ["Read", "Write", "Edit", "Bash", "Grep", "Glob", "Agent"],
+    "restricted": ["Bash:git push --force"],
+    "requires_approval": ["Bash:*DROP*", "Bash:*DELETE*", "Bash:rm -rf"]
+  },
+  "auto_commit": true,
+  "commit_convention": "type(scope): description\nConstraint: ...\nScope-risk: ...",
+  "requires_rollback": true
+}

@@ -1,0 +1,25 @@
+{
+  "name": "@helm/ai-agent-orchestrator",
+  "version": "0.1.0",
+  "description": "Harness-Driven AI Agent Orchestrator - design the Agent's complete workspace before it touches code.",
+  "main": "dist/index.js",
+  "bin": {
+    "helm": "bin/helm.js"
+  },
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/index.ts",
+    "test": "mocha --loader=ts-node/esm test/**/*.test.ts",
+    "helm": "tsx src/index.ts"
+  },
+  "keywords": ["ai-agent", "orchestration", "harness", "governance", "claude-code", "codex"],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "mocha": "^11.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  }
+}
