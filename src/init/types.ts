@@ -64,5 +64,4 @@ export const TEMPLATE_FILES: Array<[dest: string, src: string]> = [
   ["harness/gates/G7-security.sh", "gates/G7-security.sh"],
 ];
 
-// Flat list of destination paths (for backwards compat)
 export const ALL_TEMPLATE_FILES = TEMPLATE_FILES.map((t) => t[0]);

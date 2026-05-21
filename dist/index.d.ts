@@ -7,3 +7,4 @@ export { createTask, listTasks, loadTask, saveTask } from "./task/creator.js";
 export { runGate, runGates, loadProfile, listProfiles } from "./gate/runner.js";
 export { generateGateReport } from "./gate/reporter.js";
 export { createFsm, loadFsm } from "./fsm/engine.js";
+//# sourceMappingURL=index.d.ts.map
