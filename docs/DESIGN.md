@@ -16,10 +16,297 @@
 
 | 项目 | 借鉴的模式 |
 |------|-----------|
+| [OpenHarness](https://github.com/HKUDS/OpenHarness) | Tool 标准化抽象、PermissionChecker 权限模型、QueryEngine Agent Loop、Provider Profile 管理、Dry-run 安全预览 |
 | [REDPILL](../redpill) | Command-as-Prompt、Wave 并行执行、薄编排器 |
 | [SCALE ENGINE](../scale-engine) | G0-G8 质量门禁、FSM 状态机、自适应治理、自进化闭环 |
 | [OMC](../oh-my-claudecode) | Agent Tier 模型路由、Writer/Reviewer 分离、Git Trailer |
 | [PROJECT-SCAFFOLD](../project-scaffold) | 任务分级(S/M/L/CRITICAL)、Makefile 统一入口、红线规则 |
+
+---
+
+## 借鉴 OpenHarness 的改造方案
+
+### 总体思路
+
+OpenHarness 是一个**完整的 Agent 运行时**（自己调模型、执行工具），Helm 的定位是**Agent 操作代码前的编排层**（设计工作空间、预定义环境）。两者互补，不需要复制 OpenHarness 的模型调用层，而是借鉴其**治理模式、工具定义、权限体系**来增强 Helm。
+
+核心公式：**Harness = Tools + Knowledge + Observation + Action + Permissions**
+
+### 改造一：工具标准化抽象（借鉴 `BaseTool` + `ToolRegistry`）
+
+**OpenHarness 的做法**：所有工具继承 `BaseTool`，声明 `name`、`description`、`input_model`（Pydantic schema），统一返回 `ToolResult { output, is_error, metadata }`。`ToolRegistry` 管理所有工具并提供 API schema 转换。
+
+**Helm 的映射**：Helm 的 Gate 脚本就是"工具"。当前 Gate 只是 `bash "xxx.sh"` 调用，没有标准化描述。
+
+**改造方案**：
+
+```typescript
+// src/tool/base.ts
+export interface ToolDefinition {
+  name: string;              // e.g. "G4-lint"
+  description: string;        // "Run ESLint/Ruff on the project"
+  command: string;            // The shell command or inline script
+  isReadOnly: boolean;        // Read-only tools don't mutate files
+  projectType?: string[];     // ["node", "python"] - 哪些项目类型适用
+  timeoutMs?: number;         // Default 60000
+}
+
+export interface ToolResult {
+  tool: string;
+  passed: boolean;
+  exitCode: number;
+  stdout: string;
+  stderr: string;
+  durationMs: number;
+  metadata: Record<string, unknown>;
+}
+
+// src/tool/registry.ts — 统一管理 + 自动生成 Gate 脚本
+export class ToolRegistry {
+  private tools = new Map<string, ToolDefinition>();
+
+  register(tool: ToolDefinition) { this.tools.set(tool.name, tool); }
+  get(name: string): ToolDefinition | undefined { return this.tools.get(name); }
+  list(): ToolDefinition[] { return [...this.tools.values()]; }
+  forProjectType(type: string): ToolDefinition[] {
+    return this.list().filter(t => !t.projectType || t.projectType.includes(type));
+  }
+}
+```
+
+**收益**：Gate 脚本不再需要手动写 `.sh`，而是从 `ToolDefinition` 自动生成 + 可动态注册新工具。
+
+### 改造二：权限检查器（借鉴 `PermissionChecker` + `PathRule`）
+
+**OpenHarness 的做法**：
+- 内置 `SENSITIVE_PATH_PATTERNS` 硬编码保护（`*/.ssh/*`、`*/.aws/credentials` 等）
+- `PathRule` 支持 glob 匹配 allow/deny 规则
+- 三级权限模式：`FULL_AUTO`、`PLAN`（只读）、`DEFAULT`（需确认）
+- 区分 `read-only` 工具（永远允许）和 `mutating` 工具（需确认）
+
+**Helm 的映射**：Helm 的 Gate 系统缺少权限层级。当前 Gate 要么 pass 要么 fail，没有"这个工具是否被允许运行"的概念。
+
+**改造方案**：
+
+```typescript
+// src/gate/permission-checker.ts
+const SENSITIVE_PATTERNS = [
+  "*/.env*", "*/.ssh/*", "*/.aws/credentials",
+  "*/node_modules/.cache/*",  // 不监控构建缓存
+];
+
+export type PermissionMode = "auto" | "interactive" | "strict";
+
+export interface PathRule {
+  pattern: string;
+  allow: boolean;
+}
+
+export interface ToolAllowlist {
+  mode: PermissionMode;
+  allowedTools: string[];      // 白名单
+  deniedTools: string[];       // 黑名单
+  pathRules: PathRule[];       // 路径级规则
+}
+
+export function checkPermission(
+  tool: string,
+  filePath: string | undefined,
+  config: ToolAllowlist,
+  isReadOnly: boolean,
+): { allowed: boolean; reason: string } {
+  // 1. 敏感路径硬编码保护（防御 prompt injection）
+  if (filePath && isSensitivePath(filePath)) {
+    return { allowed: false, reason: `${filePath} is a sensitive path` };
+  }
+  // 2. 显式黑名单
+  if (config.deniedTools.includes(tool)) {
+    return { allowed: false, reason: `${tool} is denied` };
+  }
+  // 3. 白名单命中
+  if (config.allowedTools.includes(tool)) return { allowed: true, reason: "allowlisted" };
+  // 4. 只读工具永远允许
+  if (isReadOnly) return { allowed: true, reason: "read-only" };
+  // 5. auto 模式全部允许
+  if (config.mode === "auto") return { allowed: true, reason: "auto mode" };
+  // 6. strict 模式默认拒绝
+  return { allowed: false, reason: "requires confirmation" };
+}
+```
+
+**收益**：Helm 可以为不同安全等级的任务配置不同的工具白名单。S 级任务自动执行，CRITICAL 级任务需要人工确认高风险操作。
+
+### 改造三：Agent Loop 引擎（借鉴 `QueryEngine`）
+
+**OpenHarness 的做法**：`QueryEngine` 持有对话历史 + 工具注册表 + 权限检查器，循环调用模型 → 解析 tool_call → 权限检查 → 执行工具 → 把结果加回对话 → 继续循环，直到无更多 tool_call 或达到 max_turns。
+
+**Helm 的映射**：Helm 的 FSM 状态机已经有状态转换能力，但缺少"在某个状态下自动循环执行子步骤"的能力。
+
+**改造方案**：在 FSM 之上加一个 **StepRunner**，每个 FSM 状态对应一组要执行的步骤，StepRunner 依次执行并收集证据：
+
+```typescript
+// src/engine/step-runner.ts
+export interface Step {
+  id: string;
+  name: string;
+  tool: string;           // ToolRegistry 中的工具名
+  args?: Record<string, unknown>;
+  condition?: (ctx: ExecutionContext) => boolean;  // 是否执行
+  onResult?: (result: ToolResult, ctx: ExecutionContext) => void;
+}
+
+export interface ExecutionContext {
+  taskDir: string;
+  harnessDir: string;
+  cwd: string;
+  artifacts: Map<string, ToolResult>;  // 已收集的产物
+}
+
+export class StepRunner {
+  constructor(
+    private registry: ToolRegistry,
+    private permissions: PermissionChecker,
+  ) {}
+
+  async run(steps: Step[], ctx: ExecutionContext): Promise<StepReport[]> {
+    const report: StepReport[] = [];
+    for (const step of steps) {
+      if (step.condition && !step.condition(ctx)) continue;
+
+      const tool = this.registry.get(step.tool)!;
+      const perm = this.permissions.check(tool.name, undefined, false);
+      if (!perm.allowed) {
+        report.push({ step: step.id, status: "skipped", reason: perm.reason });
+        continue;
+      }
+
+      const result = await executeTool(tool, step.args, ctx);
+      ctx.artifacts.set(step.id, result);
+      step.onResult?.(result, ctx);
+      report.push({ step: step.id, status: result.passed ? "passed" : "failed", result });
+
+      if (!result.passed && tool.name.startsWith("G")) {
+        break;  // Gate 失败，短路退出
+      }
+    }
+    return report;
+  }
+}
+```
+
+**收益**：FSM 只管"从哪个状态到哪个状态"，StepRunner 负责"这个状态内要做什么"。关注点分离，可测试性更强。
+
+### 改造四：Provider Profile 管理（借鉴 `oh setup` + Profile 系统）
+
+**OpenHarness 的做法**：把不同 AI 后端（Claude API、Codex、OpenAI、Gemini）视为 workflow profile，每个 profile 绑定自己的凭据、模型、base URL。
+
+**Helm 的映射**：Helm 需要对接不同 AI Agent 平台。当前没有 provider 概念。
+
+**改造方案**：
+
+```typescript
+// src/provider/types.ts
+export type ProviderKind = "claude-code" | "codex" | "gemini-cli" | "cursor" | "opencode";
+
+export interface ProviderProfile {
+  name: string;
+  kind: ProviderKind;
+  configDir: string;         // e.g. "~/.claude", "~/.codex"
+  skillDir: string;          // e.g. ".claude/skills/harness"
+  model?: string;            // 推荐模型
+  features: string[];        // ["subagent", "hooks", "plan-mode", "worktree"]
+}
+
+// src/provider/detector.ts
+export function detectProviders(cwd: string): ProviderProfile[] {
+  const results: ProviderProfile[] = [];
+  if (existsSync(join(cwd, ".claude"))) {
+    results.push({ name: "Claude Code", kind: "claude-code", configDir: "~/.claude", skillDir: ".claude/skills/harness", features: ["subagent", "hooks", "plan-mode", "worktree"] });
+  }
+  if (existsSync(join(cwd, ".codex"))) {
+    results.push({ name: "Codex", kind: "codex", configDir: "~/.codex", skillDir: ".codex/skills/harness", features: ["subagent", "hooks"] });
+  }
+  // ... gemini, cursor, opencode
+  return results;
+}
+```
+
+**新增 CLI 命令**：
+
+```bash
+helm provider list              # 检测当前项目的 Provider
+helm provider use claude-code   # 切换当前 active provider
+helm provider generate-skill    # 重新生成所有 Provider 的 SKILL.md
+```
+
+**收益**：Helm 可以明确知道当前项目在哪些 Provider 上可用，为每个 Provider 生成适配的技能文件。
+
+### 改造五：Dry-run 扩展到全命令（借鉴 `oh --dry-run`）
+
+**OpenHarness 的做法**：`--dry-run` 不调模型、不执行工具、不启动 subagent，只解析配置、检查认证、列出会用到的 skills/tools/MCP，给出 `ready/warning/blocked` 结论。
+
+**Helm 的映射**：当前只有 `helm init --dry-run`，可以扩展到所有命令。
+
+**改造方案**：全局 `--dry-run` 标志，每个命令在执行前先输出"我会做什么"：
+
+```bash
+# 当前已有的
+helm init --dry-run              # 预览文件变更
+
+# 新增的
+helm task "实现登录" --dry-run    # 预览任务结构（ID、目录、模板列表）
+helm gate run --dry-run          # 预览要执行的 Gate 列表 + 命令 + 权限状态
+helm execute --dry-run           # 预览 Wave 分解 + 依赖图
+
+# 新增: 全局 dry-run 子命令
+helm dry-run                     # 综合检查
+  ├── Provider 状态: Claude Code ✓, Codex ✗
+  ├── 模板完整性: 5/7 模板存在
+  ├── Gate 脚本: 3/8 脚本存在
+  ├── 当前任务: idle（无活跃任务）
+  └── 结论: warning — 缺少部分模板，建议 helm init
+```
+
+### 改造实施路线图
+
+```
+Phase 1: 工具标准化（2-3 天）
+  ├── 定义 ToolDefinition 接口
+  ├── 实现 ToolRegistry
+  ├── 将现有 Gate 脚本迁移为 ToolDefinition
+  └── Gate 脚本自动生成
+
+Phase 2: 权限系统（1-2 天）
+  ├── 实现 PermissionChecker
+  ├── 定义 ToolAllowlist 配置格式
+  ├── 在 Profile 中绑定 allowlist
+  └── Gate Runner 集成权限检查
+
+Phase 3: StepRunner 引擎（2-3 天）
+  ├── 实现 Step + StepRunner
+  ├── FSM ↔ StepRunner 对接
+  ├── 任务状态文件中增加步骤报告
+  └── 支持 Gate 失败短路 + 回退
+
+Phase 4: Provider 管理（1-2 天）
+  ├── 实现 ProviderProfile 类型
+  ├── 实现 Provider 自动检测
+  ├── 新增 helm provider 命令
+  └── helm init 自动检测 + 生成 Skill
+
+Phase 5: Dry-run 全局扩展（1 天）
+  ├── 实现 helm dry-run 综合检查命令
+  ├── 所有命令支持 --dry-run
+  └── 给出 ready/warning/blocked 结论
+
+Phase 6: 补齐已有设计文档中的缺失（2-3 天）
+  ├── 补齐 templates/ 目录（7 个模板文件）
+  ├── 补齐 profiles/ 目录（4 个 profile）
+  ├── 补齐 gates/ 目录（8 个 Gate 脚本）
+  └── 补齐 test/ 目录（至少覆盖 commands + registry）
+```
+
+**总计**：约 9-14 天可完成全部改造。
 
 ---
 

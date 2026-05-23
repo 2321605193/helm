@@ -1,4 +1,6 @@
-import { Command, CommandOpts } from "./commands.js";
+import { Command } from "./commands.js";
+import type { CommandOpts } from "./commands.js";
+import { fileURLToPath } from "url";
 import { runInit } from "./init/init.js";
 import { createTask, listTasks, loadTask } from "./task/creator.js";
 import { runGates, loadProfile, listProfiles } from "./gate/runner.js";
@@ -205,6 +207,16 @@ export async function main() {
     process.exit(1);
   }
 }
+
+// Run as a CLI when this module is the entry point (e.g. `tsx src/cli.ts`),
+// but not when imported as a library (e.g. via dist/index.js from bin/helm.js).
+const invokedDirectly = (() => {
+  const entry = process.argv[1];
+  if (!entry) return false;
+  const norm = (p: string) => p.replace(/\\/g, "/").replace(/\.(ts|js)$/, "");
+  return norm(fileURLToPath(import.meta.url)) === norm(entry);
+})();
+if (invokedDirectly) void main();
 
 function printHelp() {
   console.log(`

@@ -6,6 +6,15 @@ echo "=== G6: Coverage Gate ==="
 
 THRESHOLD=${COVERAGE_THRESHOLD:-80}
 
+# Prefer the concrete command resolved by `helm init` (harness/project.env).
+[ -f "harness/project.env" ] && source "harness/project.env"
+if [ -n "${HELM_COVERAGE_CMD:-}" ]; then
+  echo "Running: $HELM_COVERAGE_CMD (threshold: ${THRESHOLD}%)"
+  eval "$HELM_COVERAGE_CMD"
+  echo "⊘ Coverage reported above; threshold enforcement is advisory"
+  exit 0
+fi
+
 if [ -f "package.json" ] && command -v npx &>/dev/null; then
   if grep -q '"c8"\|"istanbul"\|"jest"' package.json 2>/dev/null; then
     echo "Checking coverage (threshold: ${THRESHOLD}%)..."

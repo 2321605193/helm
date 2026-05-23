@@ -1,0 +1,7 @@
+src/
+test/
+.omc/
+node_modules/
+*.tsbuildinfo
+docs/
+.vscode/

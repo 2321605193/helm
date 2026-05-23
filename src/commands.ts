@@ -29,7 +29,9 @@ export class Command {
     for (let i = 0; i < args.length; i++) {
       const arg = args[i];
       if (arg.startsWith("--")) {
-        const key = arg.slice(2);
+        // Normalize kebab-case flags to camelCase keys so actions can read
+        // them as opts.dryRun rather than opts["dry-run"].
+        const key = arg.slice(2).replace(/-([a-z])/g, (_, c: string) => c.toUpperCase());
         if (i + 1 < args.length && !args[i + 1].startsWith("--")) {
           opts[key] = args[i + 1];
           i++;

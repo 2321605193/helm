@@ -1,5 +1,6 @@
 export { main } from "./cli.js";
-export { Command, CommandOpts } from "./commands.js";
+export { Command } from "./commands.js";
+export type { CommandOpts } from "./commands.js";
 export { runInit } from "./init/init.js";
 export { scanProject } from "./init/scanner.js";
 export { generateDiff } from "./init/differ.js";

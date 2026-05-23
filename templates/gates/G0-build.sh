@@ -4,6 +4,15 @@ set -euo pipefail
 
 echo "=== G0: Build Gate ==="
 
+# Prefer the concrete command resolved by `helm init` (harness/project.env).
+[ -f "harness/project.env" ] && source "harness/project.env"
+if [ -n "${HELM_BUILD_CMD:-}" ]; then
+  echo "Running: $HELM_BUILD_CMD"
+  eval "$HELM_BUILD_CMD" || { echo "✗ Build failed"; exit 1; }
+  echo "✓ Build passed"
+  exit 0
+fi
+
 if [ -f "package.json" ]; then
   if grep -q '"build"' package.json 2>/dev/null; then
     npm run build
